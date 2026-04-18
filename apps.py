@@ -1,57 +1,22 @@
+import streamlit as st
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torchvision import transforms, models
-from PIL import Image
-from fastapi import FastAPI, File, UploadFile
-import io
+import os
 
-app = FastAPI(title="Image Classification API")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "model.pth")
 
-# ----- Model Definition -----
-class SimpleCNN(nn.Module):
-    def __init__(self, num_classes=3):
-        super(SimpleCNN, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, 3, 1)
-        self.conv2 = nn.Conv2d(16, 32, 3, 1)
-        self.fc1 = nn.Linear(32 * 6 * 6, 128)
-        self.fc2 = nn.Linear(128, num_classes)
+@st.cache_resource
+def load_model():
+    if not os.path.exists(MODEL_PATH):
+        st.error("Model file not found ❌")
+        return None
+    model = torch.load(MODEL_PATH, map_location=torch.device('cpu'))
+    model.eval()
+    return model
 
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.max_pool2d(x, 2)
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, 2)
-        x = x.view(x.size(0), -1)
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
+model = load_model()
 
-# ----- Load Model -----
-# For demo, we'll initialize a fresh model.
-# In a real scenario, load pre-trained model.
-num_classes = 3  # e.g., cat, dog, car
-model = SimpleCNN(num_classes=num_classes)
-model.load_state_dict(torch.load("model.pth", map_location=torch.device('cpu')))
-model.eval()
+st.title("Cat vs Dog Classifier")
 
-# ----- Image Transformations -----
-transform = transforms.Compose([
-    transforms.Resize((32, 32)),
-    transforms.ToTensor(),
-])
-
-# ----- Class Labels -----
-classes = ['cat', 'dog', 'car']
-
-@app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    image = Image.open(io.BytesIO(await file.read())).convert("RGB")
-    img_tensor = transform(image).unsqueeze(0)
-
-    with torch.no_grad():
-        outputs = model(img_tensor)
-        _, predicted = torch.max(outputs, 1)
-        class_name = classes[predicted.item()]
-
-    return {"class": class_name}
+if model:
+    st.success("Model loaded successfully ")
