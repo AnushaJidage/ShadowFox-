@@ -1,22 +1,53 @@
 import streamlit as st
 import torch
-import os
+import torch.nn as nn
+from PIL import Image
+from torchvision import transforms
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "model.pth")
+# Model
+class CNN(nn.Module):
+    def __init__(self):
+        super(CNN, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(3, 32, 3), nn.ReLU(), nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3), nn.ReLU(), nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, 3), nn.ReLU(), nn.MaxPool2d(2)
+        )
+        self.fc = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 6 * 6, 128),
+            nn.ReLU(),
+            nn.Linear(128, 2)
+        )
 
-@st.cache_resource
-def load_model():
-    if not os.path.exists(MODEL_PATH):
-        st.error("Model file not found ❌")
-        return None
-    model = torch.load(MODEL_PATH, map_location=torch.device('cpu'))
-    model.eval()
-    return model
+    def forward(self, x):
+        return self.fc(self.conv(x))
 
-model = load_model()
+# Load model
+model = CNN()
+model.load_state_dict(torch.load("model.pth", map_location="cpu"))
+model.eval()
 
-st.title("Cat vs Dog Classifier")
+transform = transforms.Compose([
+    transforms.Resize((64,64)),
+    transforms.ToTensor()
+])
 
-if model:
-    st.success("Model loaded successfully ")
+st.title("🐱 Cat vs Dog Classifier")
+
+file = st.file_uploader("Upload Image", type=["jpg","png","jpeg"])
+
+if file:
+    img = Image.open(file).convert("RGB")
+    st.image(img)
+
+    img = transform(img).unsqueeze(0)
+
+    with torch.no_grad():
+        output = model(img)
+        pred = torch.argmax(output, 1).item()
+
+    if pred == 0:
+        st.success("🐱 Cat")
+    else:
+        st.success("🐶 Dog")
